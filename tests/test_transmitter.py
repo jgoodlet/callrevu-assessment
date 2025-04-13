@@ -13,12 +13,18 @@ import transmitter
 class TestFileTransmitter(unittest.TestCase):
     """Test cases for the file transmitter utility."""
 
+    FILE_CONTENTS = b"This is test content for the file transmitter."
+
+    IP = "127.0.0.1"
+    PORT = 12345
+
     def setUp(self):
         """Set up test environment before each test."""
         # Create a temporary file for testing
         self.temp_file = tempfile.NamedTemporaryFile(delete=False)
-        self.temp_file.write(b"This is test content for the file transmitter.")
+        self.temp_file.write(self.FILE_CONTENTS)
         self.temp_file.close()
+        self.temp_file_size = os.path.getsize(self.temp_file.name)
 
     def tearDown(self):
         """Clean up after each test."""
@@ -38,8 +44,8 @@ class TestFileTransmitter(unittest.TestCase):
 
         # Create args object with test values
         args = MagicMock()
-        args.ip = "127.0.0.1"
-        args.port = 12345
+        args.ip = self.IP
+        args.port = self.PORT
         args.filename = self.temp_file.name
 
         # Redirect stdout to capture progress output
@@ -53,7 +59,7 @@ class TestFileTransmitter(unittest.TestCase):
         sys.stdout = sys.__stdout__
 
         # Verify that send_file was called correctly
-        mock_instance.connect.assert_called_once_with(("127.0.0.1", 12345))
+        mock_instance.connect.assert_called_once_with((self.IP, self.PORT))
         self.assertIsNone(result)
         self.assertIn("File transmission complete!", captured_output.getvalue())
 
@@ -62,8 +68,8 @@ class TestFileTransmitter(unittest.TestCase):
         """Test sending a file that doesn't exist."""
         # Create args object with non-existent file
         args = MagicMock()
-        args.ip = "127.0.0.1"
-        args.port = 12345
+        args.ip = self.IP
+        args.port = self.PORT
         args.filename = "nonexistent_file.txt"
 
         # Redirect stdout to capture error output
@@ -92,8 +98,8 @@ class TestFileTransmitter(unittest.TestCase):
 
         # Create args object with test values
         args = MagicMock()
-        args.ip = "127.0.0.1"
-        args.port = 12345
+        args.ip = self.IP
+        args.port = self.PORT
         args.filename = self.temp_file.name
 
         # Redirect stdout to capture error output
@@ -109,7 +115,7 @@ class TestFileTransmitter(unittest.TestCase):
         # Verify error handling
         self.assertEqual(result, 1)
         self.assertIn(
-            "Connection refused to 127.0.0.1:12345", captured_output.getvalue()
+            f"Connection refused to {self.IP}:{self.PORT}", captured_output.getvalue()
         )
 
     @patch("socket.socket")
@@ -121,18 +127,18 @@ class TestFileTransmitter(unittest.TestCase):
 
         # Mock the connection
         mock_conn = MagicMock()
-        mock_instance.accept.return_value = (mock_conn, ("127.0.0.1", 54321))
+        mock_instance.accept.return_value = (mock_conn, (self.IP, self.PORT))
 
         # Mock the file size and content
         mock_conn.recv.side_effect = [
-            b"42\n",  # First recv returns file size
-            b"This is test content for the file transmitter.",  # Second recv returns file content
+            f"{self.temp_file_size}\n".encode(),
+            self.FILE_CONTENTS,  # Second recv returns file content
         ]
 
         # Create args object with test values
         args = MagicMock()
-        args.ip = "127.0.0.1"
-        args.port = 12345
+        args.ip = self.IP
+        args.port = self.PORT
 
         # Redirect stdout to capture progress output
         captured_output = StringIO()
@@ -145,7 +151,7 @@ class TestFileTransmitter(unittest.TestCase):
         sys.stdout = sys.__stdout__
 
         # Verify that receive_file was called correctly
-        mock_instance.bind.assert_called_once_with(("127.0.0.1", 12345))
+        mock_instance.bind.assert_called_once_with((self.IP, self.PORT))
         mock_instance.listen.assert_called_once()
         self.assertIsNone(result)
         self.assertIn("File received and saved!", captured_output.getvalue())
@@ -154,7 +160,7 @@ class TestFileTransmitter(unittest.TestCase):
         self.assertTrue(os.path.exists("output.txt"))
         with open("output.txt", "rb") as f:
             content = f.read()
-            self.assertEqual(content, b"This is test content for the file transmitter.")
+            self.assertEqual(content, self.FILE_CONTENTS)
 
     @patch("socket.socket")
     def test_receive_file_error(self, mock_socket):
@@ -166,8 +172,8 @@ class TestFileTransmitter(unittest.TestCase):
 
         # Create args object with test values
         args = MagicMock()
-        args.ip = "127.0.0.1"
-        args.port = 12345
+        args.ip = self.IP
+        args.port = self.PORT
 
         # Redirect stdout to capture error output
         captured_output = StringIO()
