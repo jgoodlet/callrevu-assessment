@@ -1,7 +1,7 @@
 [project]
 name = "call-revu"
 version = "0.1.0"
-description = "Add your description here"
+description = "File transfer utility using sockets"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = []
