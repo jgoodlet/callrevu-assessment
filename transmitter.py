@@ -30,8 +30,34 @@ CHUNK_SIZE = 4096
 
 
 def send_file(args) -> int | None:
-    """Send a file to a receiving server."""
+    """
+    Send a file to a remote server over a TCP/IP connection.
 
+    This function establishes a socket connection to the specified host and port,
+    then transmits the requested file. The file is sent in chunks to efficiently
+    handle large files without excessive memory usage.
+
+    Args:
+        args: A namespace object containing the following attributes:
+            ip (str): The IP address of the target server.
+            port (int): The port number on the target server.
+            filename (str): Path to the file to be transmitted.
+
+    Returns:
+        int | None: Returns 1 if an error occurs (file not found, connection refused,
+            socket error, or other exception), None if transmission completes
+            successfully.
+
+    Raises:
+        No exceptions are raised directly, but socket errors may occur during
+        connection or transmission and are handled accordingly:
+
+        - FileNotFoundError: If the specified file doesn't exist
+        - ConnectionRefusedError: If the remote server refuses the connection
+        - socket.error: If a socket-related error occurs
+        - Exception: For any other unexpected errors
+
+    """
     host = args.ip
     port = args.port
     filename = args.filename
@@ -42,62 +68,94 @@ def send_file(args) -> int | None:
         print(f"Error: file {filename} not found.")
         return 1
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.connect((host, port))
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((host, port))
+            s.sendall(f"{filesize}\n".encode())
 
-        # Send the file size so the server know how big of a file
-        s.sendall(f"{filesize}\n".encode())
-
-        # Send the file in chunks
-        bytes_sent = 0
-        with open(filename, "rb") as f:
-            while True:
-                chunk = f.read(CHUNK_SIZE)
-                if not chunk:
-                    break
-                s.sendall(chunk)
-                bytes_sent += len(chunk)
-                print(
-                    f"\rSent {bytes_sent}/{filesize} bytes ({bytes_sent/filesize:.1%})",
-                    end="",
-                )
-
-        print("\nFile transmission complete!")
-
-
-def receive_file(args) -> None:
-    """Receive a file from a sending client."""
-
-    host = args.ip
-    port = args.port
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind((host, port))
-        s.listen()
-
-        print(f"Listening on {host}:{port}...")
-
-        conn, addr = s.accept()
-        with conn:
-            print(f"Connection from {addr} established")
-
-            # Get the file size
-            filesize = int(conn.recv(1024).decode().strip())
-            bytes_received = 0
-
-            with open("output.txt", "wb") as f:
-                while bytes_received < filesize:
-                    chunk = conn.recv(min(CHUNK_SIZE, filesize - bytes_received))
+            # Send the file in chunks
+            bytes_sent = 0
+            with open(filename, "rb") as f:
+                while True:
+                    chunk = f.read(CHUNK_SIZE)
                     if not chunk:
                         break
-                    f.write(chunk)
-                    bytes_received += len(chunk)
+                    s.sendall(chunk)
+                    bytes_sent += len(chunk)
                     print(
-                        f"\rReceived {bytes_received}/{filesize} bytes ({bytes_received/filesize:.1%})",
+                        f"\rSent {bytes_sent}/{filesize} bytes ({bytes_sent/filesize:.1%})",
                         end="",
                     )
 
-            print("\nFile received and saved!")
+            print("\nFile transmission complete!")
+
+    except ConnectionRefusedError:
+        print(f"Connection refused to {host}:{port}")
+        return 1
+    except socket.error as e:
+        print(f"Socket error occurred: {e}")
+        return 1
+    except Exception as e:
+        print(f"Error encountered: {e}")
+        return 1
+
+
+def receive_file(args) -> int | None:
+    """Receive a file from a remote client over a TCP/IP connection.
+
+    This function creates a socket server that listens on the specified IP address
+    and port for incoming connections. Once a connection is established, it receives
+    the file size first, then the file data in chunks, writing the received data to
+    a local file named 'output.txt'.
+
+    Args:
+        args: A namespace object containing the following attributes:
+            ip (str): The IP address to bind the server to.
+            port (int): The port number to listen on.
+
+    Returns:
+        int | None: Returns 1 if an error occurs during execution, None if the
+            file is received successfully.
+
+    Note:
+        - The function always saves the received file as 'output.txt' in the
+        current working directory regardless of the original filename.
+        - The function will block until a connection is received.
+    """
+    host = args.ip
+    port = args.port
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind((host, port))
+            s.listen()
+
+            print(f"Listening on {host}:{port}...")
+
+            conn, addr = s.accept()
+            with conn:
+                print(f"Connection from {addr} established")
+
+                # Get the file size
+                filesize = int(conn.recv(1024).decode().strip())
+                bytes_received = 0
+
+                with open("output.txt", "wb") as f:
+                    while bytes_received < filesize:
+                        chunk = conn.recv(min(CHUNK_SIZE, filesize - bytes_received))
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        bytes_received += len(chunk)
+                        print(
+                            f"\rReceived {bytes_received}/{filesize} bytes ({bytes_received/filesize:.1%})",
+                            end="",
+                        )
+
+                print("\nFile received and saved!")
+    except Exception as e:
+        print(f"Error encountered: {e}")
+        return 1
 
 
 def main() -> int:
@@ -114,10 +172,6 @@ def main() -> int:
 
     Returns:
         int: Returns 0 on successful execution.
-
-    Note:
-        This function relies on the send_file and receive_file functions
-        which must be defined elsewhere in the code.
     """
     parser = argparse.ArgumentParser(
         prog="transmitter",
